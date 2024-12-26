@@ -18,10 +18,10 @@ void error(char *msg)
 int main(int argc, char *argv[])
 {
      int sockfd, newsockfd, portno;
-     socklen_t clilen;
+     socklen_t clilen; // 
      char buffer[256];
-     char ipstr[INET_ADDRSTRLEN];
-     struct sockaddr_in serv_addr, cli_addr;
+     char ipstr[INET_ADDRSTRLEN]; // ip sring - len of []
+     struct sockaddr_in serv_addr, cli_addr; // struct of scoket addr
      int n;
      if (argc < 2) {
          fprintf(stderr,"ERROR, no port provided\n");
@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
 
      /* create socket */
 
-     sockfd = socket(AF_INET, SOCK_STREAM, 0);
+     sockfd = socket(AF_INET, SOCK_STREAM, 0); // get the socket file descriptor
      if (sockfd < 0) 
         error("ERROR opening socket");
 
