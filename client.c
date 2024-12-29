@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <signal.h>
+#include <stdbool.h>
 
 void error(char *msg) {
     perror(msg);
@@ -61,7 +62,7 @@ int main(int argc, char *argv[]) {
         error("ERROR sending name to server");
 
     printf("Connected to the server as %s.\n", argv[3]);
-
+    
     // Fork to handle receiving and sending
     pid = fork();
 
@@ -69,7 +70,7 @@ int main(int argc, char *argv[]) {
         error("ERROR forking");
     } else if (pid == 0) {
         // Child process: handles receiving messages
-        while (1) {
+        while (1) { 
             bzero(buffer, 256);
             n = read(sockfd, buffer, 255);
             if (n <= 0) {
@@ -83,26 +84,26 @@ int main(int argc, char *argv[]) {
             }
             printf("%s\n", buffer);
         }
-    } else {
+    } else{
         // Parent process: handles sending messages
         while (1) {
+            usleep(1000); // waiting for child to write back
             printf("Please enter the message: \n");
             bzero(buffer, 256);
             fgets(buffer, 255, stdin);
-
             // Send message to the server
             n = write(sockfd, buffer, strlen(buffer));
-            if (n < 0)
+            if (n < 0){
                 error("ERROR writing to socket");
-
+                continue;
+            }
             // Check if the client wants to exit
             if (strncmp(buffer, "!exit", 5) == 0) {
                 printf("Client exiting.\n");
-                kill(pid, SIGKILL); // Kill the child process
+                kill(pid, SIGTERM); // Kill the child process
                 break;
             }
         }
-
         // Wait for the child process to finish
         wait(NULL);
         close(sockfd);
@@ -110,3 +111,4 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
+    

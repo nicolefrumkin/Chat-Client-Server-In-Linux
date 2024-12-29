@@ -50,5 +50,3 @@
    - The source code should include comments explaining the implementation.
 
 ---
-
-Would you like guidance on implementing any of these missing components?
