@@ -3,108 +3,109 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h> 
+#include <netdb.h>
+#include <signal.h>
 
-void error(char *msg)
-{
+void error(char *msg) {
     perror(msg);
     exit(0);
 }
 
-int main(int argc, char *argv[])
-{
-    int sockfd, portno, n, last = 0; 
-    // socketfd - socket file descriptor
+// Function to handle SIGCHLD for cleaning up child processes
+void handle_sigchld(int sig) {
+    while (waitpid(-1, NULL, WNOHANG) > 0);
+}
 
-    struct sockaddr_in serv_addr; 
-    /* creates a variable to store the server's parameters:
-    sin_family: The address family (e.g., IPv4).
-    sin_port: The port number of the server.
-    sin_addr: The IP address of the server. */
-    struct hostent *server; 
-    /* creates a pointer named server to hold information about the server's hostname, 
-    including its IP address, which will be retrieved later using the gethostbyname() function. */
-
-    /* server helps resolve the server's hostname into an IP address using gethostbyname().
-    serv_addr stores the resolved IP address and port number in the format required by networking functions like connect().*/
-    
+int main(int argc, char *argv[]) {
+    int sockfd, portno, n;
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
     char buffer[256];
+    pid_t pid;
+
+    // Set up SIGCHLD handler to avoid zombie processes
+    signal(SIGCHLD, handle_sigchld);
+
     if (argc < 3) {
-       fprintf(stderr,"usage %s hostname port\n", argv[0]);
-       exit(0);
-    }
-
-    /* create socket, get sockfd handle */
-
-    portno = atoi(argv[2]);
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    /* AF_INET specifies the IPv4 address family,
-    SOCK_STREAM sets the socket type to a reliable, connection-based protocol (TCP),
-    and 0 lets the system choose the default protocol for TCP.*/
-    if (sockfd < 0) 
-        error("ERROR opening socket");
-    
-    /* fill in server address in sockaddr_in datastructure */
-
-    server = gethostbyname(argv[1]); 
-    // looks up in the DNS resolver the hostname provided and stores its information, including the IP address
-    // returns a struct hostent with a list of IP addresses (h_addr_list) that match the given hostname.
-    if (server == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
+        fprintf(stderr, "usage %s hostname port\n", argv[0]);
         exit(0);
     }
-    bzero((char *) &serv_addr, sizeof(serv_addr));
-    //sets to zero the memory of the serv_addr structure
-    // bcopy is an old C function that copies memory from one place to another, commonly used in older Unix systems.
-    serv_addr.sin_family = AF_INET; // sets the address family of the serv_addr structure to AF_INET, which means it will use the IPv4 protocol.
-    //bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
-    bcopy((char *)server->h_addr_list[0], (char *)&serv_addr.sin_addr.s_addr, server->h_length);
-    /* copies the server's IP address from the first address in the resolved list
-    into sin_addr where sin_addr is a field in the struct sockaddr_in that represents the IP address of the server */
-    serv_addr.sin_port = htons(portno);
-    // sets the server's port number in the serv_addr structure, converting it from 16 bit integer to the network byte order using htons (Host TO Network Short).
-    
-    /* connect to server */
 
-    if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) 
-        error("ERROR connecting");
-    else{
-        write(sockfd,argv[3],strlen(argv[3]));
+    // Create socket
+    portno = atoi(argv[2]);
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+        error("ERROR opening socket");
+
+    server = gethostbyname(argv[1]);
+    if (server == NULL) {
+        fprintf(stderr, "ERROR, no such host\n");
+        exit(0);
     }
-    /* ask user for input */
 
-    while (1) {
-            printf("Please enter the message: ");
-            bzero(buffer,256);
-            fgets(buffer,255,stdin);
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr_list[0], (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    serv_addr.sin_port = htons(portno);
 
-            /* send user message to server */
+    // Connect to the server
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+        error("ERROR connecting");
 
-            n = write(sockfd,buffer,strlen(buffer));
-            if (n < 0) 
-                 error("ERROR writing to socket");
-            // check if client wants to exit
-            if (strncmp(buffer, "exit", 4) == 0) {
-                last = 1;
-                printf("client exiting\n");
+    // Send the client name to the server
+    n = write(sockfd, argv[3], strlen(argv[3]));
+    if (n < 0)
+        error("ERROR sending name to server");
+
+    printf("Connected to the server as %s.\n", argv[3]);
+
+    // Fork to handle receiving and sending
+    pid = fork();
+
+    if (pid < 0) {
+        error("ERROR forking");
+    } else if (pid == 0) {
+        // Child process: handles receiving messages
+        while (1) {
+            bzero(buffer, 256);
+            n = read(sockfd, buffer, 255);
+            if (n <= 0) {
+                if (n == 0) {
+                    printf("Server disconnected.\n");
+                } else {
+                    perror("ERROR reading from socket");
+                }
+                close(sockfd);
+                exit(0);
+            }
+            printf("%s\n", buffer);
+        }
+    } else {
+        // Parent process: handles sending messages
+        while (1) {
+            printf("Please enter the message: \n");
+            bzero(buffer, 256);
+            fgets(buffer, 255, stdin);
+
+            // Send message to the server
+            n = write(sockfd, buffer, strlen(buffer));
+            if (n < 0)
+                error("ERROR writing to socket");
+
+            // Check if the client wants to exit
+            if (strncmp(buffer, "!exit", 5) == 0) {
+                printf("Client exiting.\n");
+                kill(pid, SIGKILL); // Kill the child process
                 break;
             }
+        }
 
-            bzero(buffer,256);
-            /* read reply from server */
-
-            n = read(sockfd,buffer,255);
-            if (n < 0) 
-                 error("ERROR reading from socket");
-            printf("server replied %d bytes: %s\n",n, buffer);
-
-            if (last){
-                printf("client exiting\n");
-                break;
-            }
-            
+        // Wait for the child process to finish
+        wait(NULL);
+        close(sockfd);
     }
 
     return 0;
