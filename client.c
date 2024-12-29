@@ -70,7 +70,9 @@ int main(int argc, char *argv[])
 
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) 
         error("ERROR connecting");
-
+    else{
+        write(sockfd,argv[3],strlen(argv[3]));
+    }
     /* ask user for input */
 
     while (1) {
