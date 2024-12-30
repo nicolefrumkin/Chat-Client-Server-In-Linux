@@ -46,6 +46,7 @@ int main(int argc, char *argv[]) {
     client *clients[MAX_CLIENTS] = {NULL};
     int n;
     int opt = 1; // Option value for SO_REUSEADDR
+    int connected_users = 0;
 
     // Initialize client slots
     for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -125,30 +126,38 @@ int main(int argc, char *argv[]) {
                     perror("ERROR on accept");
                 }
             } else {
-                for (int i = 0; i < MAX_CLIENTS; i++) {
-                    if (clients[i]->is_active == 0) {
-                        clients[i]->is_active = 1;
-                        clients[i]->socket_fd = newsockfd;
-                        inet_ntop(AF_INET, &cli_addr.sin_addr, clients[i]->ipstr, INET_ADDRSTRLEN);
+                if(connected_users < MAX_CLIENTS){
+                    for (int i = 0; i < MAX_CLIENTS; i++) {
+                        if (clients[i]->is_active == 0 ) {
+                            clients[i]->is_active = 1;
+                            connected_users++;
+                            send(newsockfd,"y", 1, 0); // signaling for a working connection
+                            clients[i]->socket_fd = newsockfd;
+                            inet_ntop(AF_INET, &cli_addr.sin_addr, clients[i]->ipstr, INET_ADDRSTRLEN);
 
-                        // Receive the client name BEFORE setting non-blocking mode
-                        bzero(buffer, MAX_MSG);
-                        n = recv(newsockfd, buffer, MAX_MSG - 1, 0);
-                        if (n > 0) {
-                            buffer[n] = '\0';
-                            strncpy(clients[i]->name, buffer, sizeof(clients[i]->name) - 1);
-                            clients[i]->name[sizeof(clients[i]->name) - 1] = '\0';
-                            printf("Client %s connected from %s\n", clients[i]->name, clients[i]->ipstr);
-                        } else {
-                            strncpy(clients[i]->name, "Unknown", sizeof(clients[i]->name) - 1);
-                            clients[i]->name[sizeof(clients[i]->name) - 1] = '\0';
-                            printf("Client connected from %s with no name provided\n", clients[i]->ipstr);
+                            // Receive the client name BEFORE setting non-blocking mode
+                            bzero(buffer, MAX_MSG);
+                            n = recv(newsockfd, buffer, MAX_MSG - 1, 0);
+                            if (n > 0) {
+                                buffer[n] = '\0';
+                                strncpy(clients[i]->name, buffer, sizeof(clients[i]->name) - 1);
+                                clients[i]->name[sizeof(clients[i]->name) - 1] = '\0';
+                                printf("Client %s connected from %s\n", clients[i]->name, clients[i]->ipstr);
+                            } else {
+                                strncpy(clients[i]->name, "Unknown", sizeof(clients[i]->name) - 1);
+                                clients[i]->name[sizeof(clients[i]->name) - 1] = '\0';
+                                printf("Client connected from %s with no name provided\n", clients[i]->ipstr);
+                            }
+
+                            // Set non-blocking mode AFTER receiving the name
+                            set_non_blocking(newsockfd);
+                            break;
                         }
-
-                        // Set non-blocking mode AFTER receiving the name
-                        set_non_blocking(newsockfd);
-                        break;
                     }
+                }
+                else{
+                    send(newsockfd,"n", 1, 0); // cannot connect
+                    close(newsockfd);
                 }
             }
 
@@ -166,6 +175,7 @@ int main(int argc, char *argv[]) {
                         printf("Client %s disconnected\n", clients[i]->name);
                         close(clients[i]->socket_fd);
                         clients[i]->is_active = 0;
+                        connected_users--;
                     }
                 } else {
                     if (buffer[0] == '@') { // whisper

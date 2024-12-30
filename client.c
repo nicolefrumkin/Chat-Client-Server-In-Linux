@@ -26,6 +26,7 @@ int main(int argc, char *argv[]) {
     struct hostent *server;
     char buffer[256];
     pid_t pid;
+    char test;
 
     // Set up SIGCHLD handler to avoid zombie processes
     signal(SIGCHLD, handle_sigchld);
@@ -61,8 +62,15 @@ int main(int argc, char *argv[]) {
     if (n < 0)
         error("ERROR sending name to server");
 
-    printf("Connected to the server as %s.\n", argv[3]);
-    
+    n = read(sockfd, &test, 1);
+    if(test == 'y'){
+        printf("Connected to the server as %s.\n", argv[3]);
+    }
+    else if(test == 'n'){
+        printf("server if full, cannot connect\n");
+        return 0;
+    }
+
     // Fork to handle receiving and sending
     pid = fork();
 
@@ -99,7 +107,7 @@ int main(int argc, char *argv[]) {
             }
             // Check if the client wants to exit
             if (strncmp(buffer, "!exit", 5) == 0) {
-                printf("Client exiting.\n");
+                printf("Client exiting\n");
                 kill(pid, SIGTERM); // Kill the child process
                 break;
             }
