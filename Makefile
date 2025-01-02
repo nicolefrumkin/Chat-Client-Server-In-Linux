@@ -7,4 +7,4 @@ server: server.c
 	gcc -Wall server.c -o hw3server
 
 clean:
-	\rm hw3client hw3server
+	rm -rf hw3server hw3client *.o
